@@ -22,3 +22,6 @@ C.F4.recent_changes = [{ description: "EV unit merged into two-wheeler BU", dire
 C.F4.new_business_profitable = { value: true, evidence: E("EC", 4) };
 show(runDiagnosis(C, figs, P), "Case C: reintegration after maturity");
 show(runDiagnosis({ F1: {}, F2: {}, F3: {}, F4: {} }, {}, P), "Case D: empty evidence (stress test)");
+const Ecase = JSON.parse(JSON.stringify(B));
+Ecase.F2 = { statements: [...Array(7)].map((_, i) => ({ doc: i % 2 ? "AR" : "EC", page: i, quote: "q", label: "exploitative", verified: true })).concat([...Array(3)].map((_, i) => ({ doc: "AR", page: i, quote: "q", label: "neither", verified: true }))) };
+show(runDiagnosis(Ecase, { ...figs, rnd: { value: 5500, evidence: E("AR", 2) }, royalty: null }, P), "Case E: Defender claims with exploration-led behaviour (reverse gap)");
