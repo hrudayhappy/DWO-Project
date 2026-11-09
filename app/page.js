@@ -4,6 +4,9 @@ import { runPipeline, initialFigures, applyFigures, fetchNarrative, FIGURES } fr
 import { runDiagnosis } from "@/lib/engine";
 import { INDUSTRY_PROFILES, DEFAULT_INDUSTRY } from "@/lib/industryProfile";
 import Results from "@/components/Results";
+import DocumentDrop from "@/components/upload/DocumentDrop";
+import ParentSwitch from "@/components/upload/ParentSwitch";
+import RunButton from "@/components/upload/RunButton";
 
 const STAGES = ["Upload", "Read and extract", "Confirm figures", "Diagnosis"];
 
@@ -11,7 +14,9 @@ export default function Home() {
   const [stage, setStage] = useState(0);
   const [health, setHealth] = useState(null);
   const [form, setForm] = useState({ company: "", scope: "", parentTech: false, passcode: "" });
-  const [files, setFiles] = useState({ AR: null, IP: null, EC: null });
+  const [docs, setDocs] = useState([]);
+  const [runStatus, setRunStatus] = useState("idle");
+  const runId = useRef(0);
   const [logItems, setLogItems] = useState([]);
   const [run, setRun] = useState(null);
   const [figs, setFigs] = useState(null);
@@ -31,20 +36,38 @@ export default function Home() {
   const context = { company: form.company.trim(), scope: form.scope.trim() || "Whole company", parentTech: form.parentTech };
 
   async function analyse(e) {
-    e.preventDefault();
+    e?.preventDefault();
+    if (runStatus === "running") return;
     setError("");
-    if (!files.AR) { setError("Add the annual report to start. The other two documents are optional but improve the diagnosis."); return; }
     if (!context.company) { setError("Enter the company name. It is used for the web search."); return; }
-    logRef.current = []; setLogItems([]); setStage(1);
+    if (docs.some((d) => d.status === "reading")) { setError("Wait for the documents to finish reading."); return; }
+    const ar = docs.find((d) => d.role === "AR" && d.status === "done");
+    if (!ar) { setError("Add the annual report and mark it as such. The other two documents are optional but improve the diagnosis."); return; }
+    const files = { AR: null, IP: null, EC: null }, preread = {};
+    for (const d of docs) if (d.role && d.status === "done") { files[d.role] = d.file; preread[d.role] = d.pages; }
+    const id = ++runId.current;
+    logRef.current = []; setLogItems([]); setStage(1); setRunStatus("running");
     try {
-      const r = await runPipeline({ files, context, passcode: form.passcode, log });
+      const r = await runPipeline({ files, preread, context, passcode: form.passcode, log, isCancelled: () => runId.current !== id });
+      if (runId.current !== id) return;
       setRun(r);
       setFigs(initialFigures(r.extraction));
-      setStage(2);
+      setRunStatus("done");
+      setTimeout(() => { if (runId.current === id) { setStage(2); setRunStatus("idle"); window.scrollTo({ top: 0, behavior: "smooth" }); } }, 1100);
     } catch (err) {
+      if (runId.current !== id || err.message === "CANCELLED") return;
+      setRunStatus("failed");
       setError(`The analysis stopped: ${err.message}`);
     }
   }
+
+  function cancelRun() {
+    runId.current += 1;
+    setRunStatus("idle"); setStage(0); setLogItems([]); logRef.current = [];
+  }
+
+  const current = [...logItems].reverse().find((l) => l.state === "running");
+  const [stepLabel, stepDetail] = current ? current.text.split(/:\s*/) : [null, null];
 
   async function diagnose() {
     const { extraction, figures } = applyFigures(run.extraction, figs);
@@ -63,7 +86,7 @@ export default function Home() {
 
   function reset() {
     setStage(0); setRun(null); setFigs(null); setResult(null); setLogItems([]); logRef.current = []; setError("");
-    setFiles({ AR: null, IP: null, EC: null });
+    setDocs([]); setRunStatus("idle"); runId.current += 1;
   }
 
   return (
@@ -83,9 +106,9 @@ export default function Home() {
       </header>
 
       <div className="wrap body">
-        {stage === 0 && (
+        {stage <= 1 && (
           <form className="upload" onSubmit={analyse}>
-            <section className="panel">
+            <fieldset className="panel" disabled={stage === 1}>
               <h2>The company</h2>
               <label>Company name
                 <input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} placeholder="e.g. Bajaj Auto Limited" />
@@ -93,22 +116,14 @@ export default function Home() {
               <label>Part of the business to analyse <em>optional</em>
                 <input value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} placeholder="e.g. Indian passenger-vehicle business only" />
               </label>
-              <label className="check">
-                <input type="checkbox" checked={form.parentTech} onChange={(e) => setForm({ ...form, parentTech: e.target.checked })} />
-                The company relies on a parent company for much of its technology
-              </label>
-            </section>
+              <div className="psw-slot">
+                <ParentSwitch on={form.parentTech} onChange={(v) => setForm({ ...form, parentTech: v })} disabled={stage === 1} />
+              </div>
+            </fieldset>
 
             <section className="panel">
               <h2>Documents</h2>
-              <p className="hint">PDFs are read in your browser; only the relevant pages are sent for analysis.</p>
-              {[["AR", "Annual report", "Required. The most recent integrated or annual report."], ["IP", "Investor presentation", "Optional. The latest quarterly results presentation."], ["EC", "Earnings-call transcript", "Optional. The latest quarterly call transcript."]].map(([id, name, note]) => (
-                <label key={id} className={`file ${files[id] ? "has" : ""}`}>
-                  <span className="fname">{name}</span>
-                  <span className="fnote">{files[id] ? files[id].name : note}</span>
-                  <input type="file" accept="application/pdf" onChange={(e) => setFiles({ ...files, [id]: e.target.files[0] || null })} />
-                </label>
-              ))}
+              <DocumentDrop docs={docs} setDocs={setDocs} disabled={stage === 1} />
             </section>
 
             <section className="panel">
@@ -116,7 +131,7 @@ export default function Home() {
               <p>Indian automobile manufacturers. Industry-level indicators come from the {INDUSTRY_PROFILES[DEFAULT_INDUSTRY].source}.</p>
               {health?.passcodeRequired && (
                 <label>Access code
-                  <input type="password" value={form.passcode} onChange={(e) => setForm({ ...form, passcode: e.target.value })} placeholder="Provided by the project team" />
+                  <input type="password" value={form.passcode} disabled={stage === 1} onChange={(e) => setForm({ ...form, passcode: e.target.value })} placeholder="Provided by the project team" />
                 </label>
               )}
               {health && !health.mock && (!health.gemini || !health.tavily) && (
@@ -126,19 +141,13 @@ export default function Home() {
             </section>
 
             {error && <p className="error" role="alert">{error}</p>}
-            <button className="primary" type="submit">Analyse documents</button>
+            <RunButton status={runStatus} step={stepLabel} detail={stepDetail} onRun={analyse} onCancel={cancelRun} disabled={docs.some((d) => d.status === "reading")} />
+            {stage === 1 && logItems.length > 0 && (
+              <ul className="log compact runlog" aria-label="Progress">
+                {logItems.map((l) => <li key={l.id} className={l.state}>{l.text}</li>)}
+              </ul>
+            )}
           </form>
-        )}
-
-        {stage === 1 && (
-          <section className="panel progress" aria-live="polite">
-            <h2>Reading and extracting evidence</h2>
-            <p className="hint">Large annual reports take a minute to read. Keep this tab open.</p>
-            <ul className="log">
-              {logItems.map((l) => <li key={l.id} className={l.state}>{l.text}</li>)}
-            </ul>
-            {error && <><p className="error" role="alert">{error}</p><button className="secondary" onClick={reset}>Start again</button></>}
-          </section>
         )}
 
         {stage === 2 && figs && (
