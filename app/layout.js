@@ -1,7 +1,9 @@
 import "@fontsource/ibm-plex-sans/400.css";
 import "@fontsource/ibm-plex-sans/500.css";
 import "@fontsource/ibm-plex-sans/600.css";
+import "@fontsource-variable/archivo/wdth.css";
 import "./globals.css";
+import "./landing.css";
 
 export const metadata = {
   title: "Ambidexterity Analyzer",

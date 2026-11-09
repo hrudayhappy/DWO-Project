@@ -3,7 +3,7 @@
 // The Analyse button becomes a live status pill that names the step the analysis is on.
 import { createElement } from "react";
 import { motion, AnimatePresence, MotionConfig } from "motion/react";
-import { ScanSearch, BookOpen, Telescope, Globe, ShieldCheck, BadgeCheck, X, RotateCcw } from "lucide-react";
+import { ScanSearch, BookOpen, Telescope, Globe, ShieldCheck, BadgeCheck, X, RotateCcw, ArrowRight } from "lucide-react";
 
 const spring = { type: "spring", stiffness: 260, damping: 22, mass: 0.8 };
 
@@ -56,8 +56,8 @@ export default function RunButton({ status, step, detail, onRun, onCancel, disab
               exit={{ opacity: 0, scale: 0.8, filter: "blur(4px)" }}
               transition={spring}
             >
-              <ScanSearch size={21} aria-hidden="true" />
               <AnimatedText text="Analyse documents" />
+              <span className="runb-go" aria-hidden="true"><ArrowRight size={17} strokeWidth={2.6} /></span>
             </motion.button>
           )}
           {status === "running" && (
