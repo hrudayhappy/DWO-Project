@@ -7,6 +7,7 @@ import Results from "@/components/Results";
 import DocumentDrop from "@/components/upload/DocumentDrop";
 import ParentSwitch from "@/components/upload/ParentSwitch";
 import RunButton from "@/components/upload/RunButton";
+import AmbidexterityField from "@/components/hero/AmbidexterityField";
 
 const STAGES = ["Upload", "Read and extract", "Confirm figures", "Diagnosis"];
 
@@ -97,6 +98,7 @@ export default function Home() {
             <h1>Ambidexterity Analyzer</h1>
             <p>How well does an organization balance exploring the new with exploiting what it already does well? Upload a company's public documents and the tool reads them, scores four organization-theory frameworks and shows the evidence behind every conclusion.</p>
           </div>
+          {stage <= 1 && <AmbidexterityField />}
           <ol className="stages" aria-label="Progress">
             {STAGES.map((s, i) => (
               <li key={s} className={i === stage ? "now" : i < stage ? "past" : ""}><span>{i + 1}</span>{s}</li>
