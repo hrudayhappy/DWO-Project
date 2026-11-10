@@ -8,6 +8,9 @@ import DocumentDrop from "@/components/upload/DocumentDrop";
 import ParentSwitch from "@/components/upload/ParentSwitch";
 import RunButton from "@/components/upload/RunButton";
 import Landing from "@/components/landing/Landing";
+import ReadingScreen from "@/components/flow/ReadingScreen";
+import ReviewScreen from "@/components/flow/ReviewScreen";
+import { applyReview, emptyReview } from "@/lib/review";
 
 const STAGES = ["Upload", "Read and extract", "Confirm figures", "Diagnosis"];
 
@@ -23,7 +26,9 @@ export default function Home() {
   const [figs, setFigs] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [review, setReview] = useState(emptyReview);
   const logRef = useRef([]);
+  const feed = useRef({ events: [], finished: false, error: null });
 
   useEffect(() => { fetch("/api/health").then((r) => r.json()).then(setHealth).catch(() => setHealth({})); }, []);
 
@@ -47,20 +52,32 @@ export default function Home() {
     const files = { AR: null, IP: null, EC: null }, preread = {};
     for (const d of docs) if (d.role && d.status === "done") { files[d.role] = d.file; preread[d.role] = d.pages; }
     const id = ++runId.current;
-    logRef.current = []; setLogItems([]); setStage(1); setRunStatus("running");
+    logRef.current = []; setLogItems([]); setRunStatus("running");
+    const fd = { events: [], finished: false, error: null };
+    feed.current = fd;
+    setStage(1); window.scrollTo({ top: 0 });
     try {
-      const r = await runPipeline({ files, preread, context, passcode: form.passcode, log, isCancelled: () => runId.current !== id });
+      const r = await runPipeline({ files, preread, context, passcode: form.passcode, log, onEvent: (ev) => fd.events.push(ev), isCancelled: () => runId.current !== id });
       if (runId.current !== id) return;
+      if (["F1", "F2", "F3", "F4"].every((k) => !Object.keys(r.extraction[k] || {}).length)) {
+        const why = (r.errors[0] || "").replace(/^[a-z ]+:\s*/, "") || "nothing could be extracted";
+        setError(`The analysis stopped: ${why}`); setRunStatus("idle");
+        fd.error = why; fd.finished = true; return;
+      }
       setRun(r);
       setFigs(initialFigures(r.extraction));
-      setRunStatus("done");
-      setTimeout(() => { if (runId.current === id) { setStage(2); setRunStatus("idle"); window.scrollTo({ top: 0, behavior: "smooth" }); } }, 1100);
+      setReview(emptyReview());
+      setRunStatus("idle");
+      fd.finished = true;
     } catch (err) {
       if (runId.current !== id || err.message === "CANCELLED") return;
-      setRunStatus("failed");
+      setRunStatus("idle");
       setError(`The analysis stopped: ${err.message}`);
+      fd.error = err.message; fd.finished = true;
     }
   }
+
+  function toReview() { setStage(2); window.scrollTo({ top: 0 }); }
 
   function cancelRun() {
     runId.current += 1;
@@ -71,7 +88,7 @@ export default function Home() {
   const [stepLabel, stepDetail] = current ? current.text.split(/:\s*/) : [null, null];
 
   async function diagnose() {
-    const { extraction, figures } = applyFigures(run.extraction, figs);
+    const { extraction, figures } = applyFigures(applyReview(run.extraction, review), figs);
     const profile = INDUSTRY_PROFILES[DEFAULT_INDUSTRY];
     const res = runDiagnosis(extraction, figures, profile, { parentTech: form.parentTech });
     setResult({ ...res, context, run: { ...run, extraction }, figures: figs, summary: null, generatedAt: new Date().toISOString() });
@@ -86,11 +103,25 @@ export default function Home() {
   }
 
   function reset() {
-    setStage(0); setRun(null); setFigs(null); setResult(null); setLogItems([]); logRef.current = []; setError("");
+    setStage(0); setRun(null); setFigs(null); setResult(null); setLogItems([]); logRef.current = []; setError(""); setReview(emptyReview());
     setDocs([]); setRunStatus("idle"); runId.current += 1;
   }
 
-  if (stage <= 1) {
+  if (stage === 1) {
+    return (
+      <ReadingScreen company={context.company} scope={context.scope} docs={docs} feed={feed}
+        onDone={toReview} onCancel={cancelRun} onBack={() => { setStage(0); window.scrollTo({ top: 0 }); }} />
+    );
+  }
+
+  if (stage === 2 && run && figs) {
+    return (
+      <ReviewScreen context={context} form={form} setForm={setForm} docs={docs} run={run} figs={figs} setFigs={setFigs}
+        review={review} setReview={setReview} onDiagnose={diagnose} onReset={reset} />
+    );
+  }
+
+  if (stage === 0) {
     return (
       <Landing testMode={health?.mock}>
         <form className="upload lx-form" onSubmit={analyse}>
@@ -129,11 +160,6 @@ export default function Home() {
           </div>
 
           {error && <p className="error" role="alert">{error}</p>}
-          {stage === 1 && logItems.length > 0 && (
-            <ul className="log compact runlog lx-log" aria-label="Progress">
-              {logItems.map((l) => <li key={l.id} className={l.state}>{l.text}</li>)}
-            </ul>
-          )}
         </form>
       </Landing>
     );
@@ -156,37 +182,6 @@ export default function Home() {
       </header>
 
       <div className="wrap body">
-        {stage === 2 && figs && (
-          <section className="panel confirm">
-            <h2>Confirm the key figures</h2>
-            <p className="hint">These figures drive the ratios in the diagnosis. Check them against the documents, correct any that are wrong, and fill in any that are missing. Leave a field empty if the figure is not available.</p>
-            <ul className="log compact">{logItems.map((l) => <li key={l.id} className={l.state}>{l.text}</li>)}</ul>
-            <table className="figs">
-              <thead><tr><th>Figure</th><th>Value</th><th>Source</th></tr></thead>
-              <tbody>
-                {FIGURES.map((f) => {
-                  const st = figs[f.key];
-                  const ev = st.evidence[0];
-                  return (
-                    <tr key={f.key}>
-                      <td>{f.label}</td>
-                      <td className="val">
-                        <input inputMode="decimal" value={st.value} aria-label={f.label} onChange={(e) => setFigs({ ...figs, [f.key]: { ...st, value: e.target.value.replace(/[^0-9.]/g, "") } })} />
-                        <span>{f.unit}</span>
-                      </td>
-                      <td className="src">{ev ? <><b>{ev.doc === "WEB" ? "Web" : ev.doc} {ev.page ? `p.${ev.page}` : ""}</b> “{ev.quote}”</> : <span className="muted">Not found in the documents</span>}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <div className="actions">
-              <button className="primary" onClick={diagnose}>Run the diagnosis</button>
-              <button className="secondary" onClick={reset}>Start again</button>
-            </div>
-          </section>
-        )}
-
         {stage === 3 && result && <Results result={result} onReset={reset} />}
       </div>
       <footer className="wrap foot">Designing Work Organisations, IIM Lucknow. Frameworks from Daft and Uppal (2020), Duncan (1972), Miles and Snow (1978), March (1991) and O'Reilly and Tushman (2004).</footer>

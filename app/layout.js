@@ -4,6 +4,7 @@ import "@fontsource/ibm-plex-sans/600.css";
 import "@fontsource-variable/google-sans-flex/opsz.css";
 import "./globals.css";
 import "./landing.css";
+import "./flow.css";
 
 export const metadata = {
   title: "Ambidexterity Analyzer",
