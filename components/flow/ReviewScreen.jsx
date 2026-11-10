@@ -4,11 +4,11 @@
 // page then places the company within the frameworks.
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { ArrowRight, ChevronDown, CornerDownRight, Info, RotateCcw, Undo2 } from "lucide-react";
+import { ArrowRight, ArrowUpRight, ChevronDown, CornerDownRight, Globe, Info, RotateCcw, Undo2 } from "lucide-react";
 import FlowTop, { useDarkPage } from "./FlowTop";
 import Diagram from "./Diagrams";
 import { LENSES, evidenceCounts } from "./theory";
-import { srcLabel } from "./buckets";
+import { srcLabel, domain } from "./buckets";
 import { FIGURES, PROFILE_FIGS } from "@/lib/pipeline";
 
 const ALL = [...FIGURES, ...PROFILE_FIGS];
@@ -49,14 +49,15 @@ function Highlights({ figs }) {
   );
 }
 
-function Tile({ f, st, setSt }) {
+function Tile({ f, st, setSt, web }) {
   const [open, setOpen] = useState(false);
   const reduce = useReducedMotion();
   const ev = st.evidence[0];
   const orig = st.original == null ? "" : String(st.original);
   const edited = st.value !== orig;
-  const state = edited ? "edited" : ev ? "found" : "missing";
-  const stateText = { edited: "Edited by you", found: "Found in the documents", missing: "Not found" }[state];
+  const state = edited ? "edited" : ev ? (ev.doc === "WEB" ? "web" : "found") : "missing";
+  const stateText = { edited: "Edited by you", found: "Found in the documents", web: "Found on the web", missing: "Not found" }[state];
+  const none = web === "missing" ? "Not in the documents, and the web search did not find it either. Type it in if you know it, or leave it empty." : "Not found in the documents. Type it in if you know it, or leave it empty.";
   return (
     <div className={`vx-tile ${state} ${open ? "open" : ""}`}>
       <div className="vx-tile-top">
@@ -72,7 +73,9 @@ function Tile({ f, st, setSt }) {
         {open && (
           <motion.div className="vx-why" initial={reduce ? false : { height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: [0.2, 0.7, 0.2, 1] }}>
             <div className="vx-why-in">
-              {ev ? <><b>{srcLabel(ev)}</b><p>“{firstSentence(ev.quote)}”</p></> : <p>Not found in the documents. Type it in if you know it, or leave it empty.</p>}
+              {ev && ev.doc === "WEB" && <b className="vx-src"><Globe size={12} aria-hidden="true" />{domain(ev.url)}<a href={ev.url} target="_blank" rel="noreferrer">Open<ArrowUpRight size={12} aria-hidden="true" /><span className="sr"> the page (opens in a new tab)</span></a></b>}
+              {ev && ev.doc !== "WEB" && <b className="vx-src">{srcLabel(ev)}</b>}
+              {ev ? <p>“{firstSentence(ev.quote)}”</p> : <p>{none}</p>}
               {edited && <button type="button" className="vx-undo" onClick={() => setSt({ ...st, value: orig })}><Undo2 size={13} aria-hidden="true" />{orig ? `Back to ${orig}` : "Clear"}</button>}
             </div>
           </motion.div>
@@ -83,11 +86,12 @@ function Tile({ f, st, setSt }) {
 }
 
 function countLabel(c) {
-  if (c.unit === "document") return `${c.n} document${c.n === 1 ? "" : "s"}`;
+  if (c.unit === "source") return `${c.n} source${c.n === 1 ? "" : "s"}`;
   if (c.of) return `${c.n} of ${c.of} figure${c.of === 1 ? "" : "s"}`;
   if (!c.n) return "None found";
   return `${c.n} found`;
 }
+const WEB_KEY = { incorporated: "incorporated_year" };
 
 export default function ReviewScreen({ context, run, figs, setFigs, onDiagnose, onReset }) {
   useDarkPage();
@@ -95,7 +99,8 @@ export default function ReviewScreen({ context, run, figs, setFigs, onDiagnose, 
   const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState("F1");
   const counts = useMemo(() => evidenceCounts(run.extraction, figs), [run, figs]);
-  const totals = Object.fromEntries(LENSES.map((l) => [l.fw, l.groups.flatMap((g) => g.items).reduce((n, it) => n + (counts[it.id].unit === "document" ? 0 : counts[it.id].n), 0)]));
+  const totals = Object.fromEntries(LENSES.map((l) => [l.fw, l.groups.flatMap((g) => g.items).reduce((n, it) => n + (counts[it.id].unit === "source" ? 0 : counts[it.id].n), 0)]));
+  const fill = run.web || { tried: [], filled: [] };
   const pages = (run.docsRead || []).reduce((n, d) => n + d.pages, 0);
   const web = (run.webResults || []).length;
   const verified = run.stats?.verified ?? 0;
@@ -120,6 +125,7 @@ export default function ReviewScreen({ context, run, figs, setFigs, onDiagnose, 
             <strong>{verified}</strong>
             <span>pieces of evidence</span>
             <small>from {pages} pages{web ? ` and ${web} web results` : ""}</small>
+            {fill.tried.length > 0 && <small className="vx-fill"><Globe size={12} aria-hidden="true" />The web filled {fill.filled.length} of {fill.tried.length} gaps in the documents</small>}
           </div>
         </section>
 
@@ -135,9 +141,9 @@ export default function ReviewScreen({ context, run, figs, setFigs, onDiagnose, 
           <AnimatePresence initial={false}>
             {expanded && (
               <motion.div id="vx-tiles" className="vx-tiles-wrap" initial={reduce ? false : { height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.4, ease: [0.2, 0.7, 0.2, 1] }}>
-                <p className="vx-tiles-note">These drive the spending ratios in the diagnosis. Correct anything that looks wrong; the <Info size={12} aria-hidden="true" /> button shows where a figure was found.</p>
+                <p className="vx-tiles-note">These drive the spending ratios in the diagnosis. Correct anything that looks wrong; the <Info size={12} aria-hidden="true" /> button shows where a figure was found. <span className="vx-key"><i className="found" />In the documents</span><span className="vx-key"><i className="web" />On the web</span><span className="vx-key"><i className="missing" />Not found</span></p>
                 <div className="vx-tiles">
-                  {TILES.map((f) => figs[f.key] && <Tile key={f.key} f={f} st={figs[f.key]} setSt={(st) => setFigs({ ...figs, [f.key]: st })} />)}
+                  {TILES.map((f) => figs[f.key] && <Tile key={f.key} f={f} st={figs[f.key]} web={fill.keys?.[WEB_KEY[f.key] || f.src[1]]} setSt={(st) => setFigs({ ...figs, [f.key]: st })} />)}
                 </div>
               </motion.div>
             )}
@@ -179,10 +185,10 @@ export default function ReviewScreen({ context, run, figs, setFigs, onDiagnose, 
                           <li key={it.id}>
                             <div>
                               <b>{it.name}</b>
-                              <span>{it.look}</span>
+                              <ul className="vx-cues" aria-label="What we look for">{it.cues.map((q) => <li key={q}>{q}</li>)}</ul>
                               <em><CornerDownRight size={12} aria-hidden="true" />{it.reads}</em>
                             </div>
-                            <span className={`vx-n ${c.n ? "yes" : "no"}`}>{countLabel(c)}{c.note ? <small>{c.note}</small> : null}</span>
+                            <span className={`vx-n ${c.n ? "yes" : "no"}`}>{countLabel(c)}{c.web ? <small>{c.web} from the web</small> : null}{c.note ? <small>{c.note}</small> : null}</span>
                           </li>
                         );
                       })}

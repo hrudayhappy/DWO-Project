@@ -157,14 +157,16 @@ export default function ReadingScreen({ company, scope, docs, feed, onDone, onCa
           setFailed((x) => ({ ...x, [ev.fw]: ev.message })); setStatus(`Could not read the ${BUCKET[ev.fw].name.toLowerCase()} evidence`); queue = []; await S(1100);
         } else if (ev.type === "web") {
           curFw = null; setFw(null); queue = []; setStep(3); setStrip({ pages: [], at: -1 });
-          setStatus("Searching the web for missing and supporting inputs");
-          setView({ kind: "web", queries: ev.queries, results: null, key: "web" }); await S(2200);
+          const of = ev.batches > 1 ? ` (${ev.batch + 1} of ${ev.batches})` : "";
+          setStatus(ev.round ? `Trying other searches for what is still missing${of}` : `Searching the web for what the documents did not have${of}`);
+          setView({ kind: "web", round: ev.round, need: ev.need || [], queries: ev.queries, results: null, key: `web-${ev.round}-${ev.batch}` }); await S(1600);
         } else if (ev.type === "webFound") {
-          setView((v) => ({ ...v, results: ev.results })); await S(1000);
+          setView((v) => ({ ...v, results: ev.results, got: ev.chips.length })); await S(900);
           for (const c of ev.chips) { if (!alive) return; fly(c, viewRef.current?.querySelector(".rx-results") || viewRef.current, 0.65); await S(140); }
-          await S(800);
+          await S(700);
         } else if (ev.type === "webFailed") {
-          setStatus("The web search did not answer; carrying on with the documents"); await S(1100);
+          setView((v) => ({ ...v, results: [], failed: true }));
+          setStatus("This search did not answer; carrying on"); await S(1100);
         } else if (ev.type === "checked") {
           setStep(4); setFw(null); setStatus("Checking every quotation against the page it came from");
           setView({ kind: "verify", total: ev.total, verified: ev.verified, key: "verify" });
@@ -246,22 +248,25 @@ export default function ReadingScreen({ company, scope, docs, feed, onDone, onCa
                   </motion.article>
                 )}
                 {view.kind === "web" && (
-                  <motion.article key="web" className="rx-sheet rx-web" initial={reduce ? false : { opacity: 0, y: 26, filter: "blur(6px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} exit={{ opacity: 0, y: -18, transition: { duration: 0.28 } }} transition={{ duration: 0.45 }}>
-                    <header><span className="rx-dots"><i /><i /><i /></span><span>Web search</span></header>
+                  <motion.article key={view.key} className="rx-sheet rx-web" initial={reduce ? false : { opacity: 0, y: 26, filter: "blur(6px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} exit={{ opacity: 0, y: -18, transition: { duration: 0.28 } }} transition={{ duration: 0.45 }}>
+                    <header><span className="rx-dots"><i /><i /><i /></span><span>{view.round ? "Web search, second try" : "Web search"}</span></header>
+                    {view.need.length > 0 && <p className="rx-need"><span>Looking for</span>{view.need.map((n) => <b key={n}>{n}</b>)}</p>}
                     <ul className="rx-queries">
                       {view.queries.map((q, i) => (
-                        <motion.li key={q} initial={reduce ? false : { opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.35 }}>
+                        <motion.li key={q} initial={reduce ? false : { opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.3 }}>
                           <Search size={13} aria-hidden="true" />{q}
                         </motion.li>
                       ))}
                     </ul>
+                    {!view.results && <p className="rx-searching"><i /><i /><i />Reading the results</p>}
                     {view.results && (
                       <ul className="rx-results">
-                        {view.results.slice(0, 6).map((r, i) => (
+                        {view.results.slice(0, 5).map((r, i) => (
                           <motion.li key={r.url + i} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
                             <b>{short(r.title, 70)}</b><span>{srcLabel({ doc: "WEB", url: r.url })}</span>
                           </motion.li>
                         ))}
+                        {view.results.length === 0 && <li><span>{view.failed ? "The search did not answer." : "Nothing useful came back."}</span></li>}
                       </ul>
                     )}
                   </motion.article>
