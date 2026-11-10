@@ -5,12 +5,10 @@ import { runDiagnosis } from "@/lib/engine";
 import { INDUSTRY_PROFILES, DEFAULT_INDUSTRY } from "@/lib/industryProfile";
 import Results from "@/components/Results";
 import DocumentDrop from "@/components/upload/DocumentDrop";
-import ParentSwitch from "@/components/upload/ParentSwitch";
 import RunButton from "@/components/upload/RunButton";
 import Landing from "@/components/landing/Landing";
 import ReadingScreen from "@/components/flow/ReadingScreen";
 import ReviewScreen from "@/components/flow/ReviewScreen";
-import { applyReview, emptyReview } from "@/lib/review";
 import { loadSession, sessionSet, clearAll } from "@/lib/store";
 
 const STAGES = ["Upload", "Read and extract", "Confirm figures", "Diagnosis"];
@@ -20,7 +18,7 @@ const urlFor = (s) => (s ? `?step=${STEP[s]}` : window.location.pathname);
 export default function Home() {
   const [stage, setStage] = useState(0);
   const [health, setHealth] = useState(null);
-  const [form, setForm] = useState({ company: "", scope: "", parentTech: false, passcode: "" });
+  const [form, setForm] = useState({ company: "", scope: "", passcode: "" });
   const [docs, setDocs] = useState([]);
   const [runStatus, setRunStatus] = useState("idle");
   const runId = useRef(0);
@@ -29,7 +27,6 @@ export default function Home() {
   const [figs, setFigs] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
-  const [review, setReview] = useState(emptyReview);
   const logRef = useRef([]);
   const feed = useRef({ events: [], finished: false, error: null });
   const [hydrated, setHydrated] = useState(false);
@@ -52,7 +49,6 @@ export default function Home() {
       if (st) {
         if (st.run) setRun(st.run);
         if (st.figs) setFigs(st.figs);
-        if (st.review) setReview(st.review);
         if (st.result) setResult(st.result);
         s = st.stage || 0;
         if (s === 3 && !st.result) s = st.run && st.figs ? 2 : 0;
@@ -72,9 +68,9 @@ export default function Home() {
   // Save as the user goes. Document text is saved separately because it is large and rarely changes.
   useEffect(() => {
     if (!hydrated) return;
-    const t = setTimeout(() => sessionSet("state", { stage, form: { company: form.company, scope: form.scope, parentTech: form.parentTech }, run, figs, review, result }), 400);
+    const t = setTimeout(() => sessionSet("state", { stage, form: { company: form.company, scope: form.scope }, run, figs, result }), 400);
     return () => clearTimeout(t);
-  }, [hydrated, stage, form.company, form.scope, form.parentTech, run, figs, review, result]);
+  }, [hydrated, stage, form.company, form.scope, run, figs, result]);
   useEffect(() => {
     if (!hydrated || docs.some((d) => d.status === "reading")) return;
     const t = setTimeout(() => sessionSet("docs", docs.filter((d) => d.status === "done").map((d) => ({ id: d.id, name: d.file.name, size: d.file.size, role: d.role, manual: d.manual, scores: d.scores, status: "done", progress: 100, pages: d.pages }))), 700);
@@ -124,7 +120,7 @@ export default function Home() {
     fail(id, text) { logRef.current = logRef.current.map((l) => (l.id === id ? { ...l, text, state: "failed" } : l)); setLogItems(logRef.current); },
   };
 
-  const context = { company: form.company.trim(), scope: form.scope.trim() || "Whole company", parentTech: form.parentTech };
+  const context = { company: form.company.trim(), scope: form.scope.trim() || "Whole company" };
 
   async function analyse(e) {
     e?.preventDefault();
@@ -151,8 +147,7 @@ export default function Home() {
         fd.error = why; fd.finished = true; return;
       }
       setRun(r);
-      setFigs(initialFigures(r.extraction));
-      setReview(emptyReview());
+      setFigs(initialFigures(r.extraction, r.profile));
       setRunStatus("idle");
       fd.finished = true;
     } catch (err) {
@@ -174,9 +169,9 @@ export default function Home() {
   const [stepLabel, stepDetail] = current ? current.text.split(/:\s*/) : [null, null];
 
   async function diagnose() {
-    const { extraction, figures } = applyFigures(applyReview(run.extraction, review), figs);
+    const { extraction, figures } = applyFigures(run.extraction, figs);
     const profile = INDUSTRY_PROFILES[DEFAULT_INDUSTRY];
-    const res = runDiagnosis(extraction, figures, profile, { parentTech: form.parentTech });
+    const res = runDiagnosis(extraction, figures, profile);
     setResult({ ...res, context, run: { ...run, extraction }, figures: figs, summary: null, generatedAt: new Date().toISOString() });
     setStage(3);
     window.scrollTo({ top: 0 });
@@ -190,9 +185,9 @@ export default function Home() {
 
   // Starting again is the one deliberate way to drop the saved analysis.
   function reset() {
-    setStage(0); setRun(null); setFigs(null); setResult(null); setLogItems([]); logRef.current = []; setError(""); setReview(emptyReview());
+    setStage(0); setRun(null); setFigs(null); setResult(null); setLogItems([]); logRef.current = []; setError("");
     setDocs([]); setRunStatus("idle"); runId.current += 1;
-    setForm((f) => ({ company: "", scope: "", parentTech: false, passcode: f.passcode }));
+    setForm((f) => ({ company: "", scope: "", passcode: f.passcode }));
     clearAll();
     window.scrollTo({ top: 0 });
   }
@@ -208,8 +203,7 @@ export default function Home() {
 
   if (stage === 2 && run && figs) {
     return (
-      <ReviewScreen context={context} form={form} setForm={setForm} docs={docs} run={run} figs={figs} setFigs={setFigs}
-        review={review} setReview={setReview} onDiagnose={diagnose} onReset={reset} />
+      <ReviewScreen context={context} run={run} figs={figs} setFigs={setFigs} onDiagnose={diagnose} onReset={reset} />
     );
   }
 
@@ -226,9 +220,7 @@ export default function Home() {
               <label>Part of the business to analyse <em>optional</em>
                 <input value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} placeholder="e.g. Indian passenger-vehicle business only" />
               </label>
-              <div className="psw-slot">
-                <ParentSwitch on={form.parentTech} onChange={(v) => setForm({ ...form, parentTech: v })} disabled={stage === 1} />
-              </div>
+              <p className="lx-industry-note"><b>Industry</b> Indian automobile manufacturers. Industry-level indicators come from the {INDUSTRY_PROFILES[DEFAULT_INDUSTRY].source}.</p>
             </fieldset>
             <section className="lx-box">
               <h3>Documents</h3>
@@ -238,7 +230,6 @@ export default function Home() {
 
           <div className="lx-form-foot">
             <div className="lx-industry">
-              <p><b>Industry</b> Indian automobile manufacturers. Industry-level indicators come from the {INDUSTRY_PROFILES[DEFAULT_INDUSTRY].source}.</p>
               {health?.passcodeRequired && (
                 <label className="lx-code">Access code
                   <input type="password" value={form.passcode} disabled={stage === 1} onChange={(e) => setForm({ ...form, passcode: e.target.value })} placeholder="From the project team" />

@@ -339,7 +339,7 @@ export default function ReadingScreen({ company, scope, docs, feed, onDone, onCa
             </div>
           ) : finished ? (
             <div className="rx-done">
-              <p><b>{total} quotations</b> sorted into four buckets{discarded ? `, ${discarded} left out` : ""}. Next, check them and the key figures before the diagnosis.</p>
+              <p><b>{total} quotations</b> sorted into four buckets{discarded ? `, ${discarded} left out` : ""}. Next: the key figures, and how each framework will read the evidence.</p>
               <button type="button" className="lx-cta rx-next" onClick={onDone}>Review the evidence<span aria-hidden="true"><ArrowRight size={18} /></span></button>
             </div>
           ) : (

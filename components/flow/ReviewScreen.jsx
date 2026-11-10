@@ -1,94 +1,106 @@
 "use client";
-// The review screen: the user's inputs, the key figures and every piece of evidence, sorted by
-// framework. Figures can be corrected, evidence left out, and classifications changed before
-// the fixed rules score them.
+// After reading: what was extracted (in one line), the key figures as a highlight strip that
+// opens into editable tiles, and how each framework will read the evidence. The diagnosis
+// page then places the company within the frameworks.
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { ArrowRight, Building2, ChevronDown, FileText, Globe, RotateCcw, Undo2 } from "lucide-react";
+import { ArrowRight, ChevronDown, CornerDownRight, Info, RotateCcw, Undo2 } from "lucide-react";
 import FlowTop, { useDarkPage } from "./FlowTop";
-import ParentSwitch from "@/components/upload/ParentSwitch";
-import { BUCKETS, BUCKET, DOC_LABEL, srcLabel, cap } from "./buckets";
-import { FIGURES } from "@/lib/pipeline";
-import { reviewGroups } from "@/lib/review";
+import Diagram from "./Diagrams";
+import { LENSES, evidenceCounts } from "./theory";
+import { srcLabel } from "./buckets";
+import { FIGURES, PROFILE_FIGS } from "@/lib/pipeline";
 
-const TYPE = { fact: "Reported fact", company_claim: "Company's own words", third_party: "Third party", inference: "Inference" };
-const LABELS = [["exploratory", "Exploratory"], ["exploitative", "Exploitative"], ["both", "Both"], ["neither", "Neither"]];
-const STYLES = [["organic", "Organic"], ["mechanistic", "Mechanistic"], ["mixed", "Mixed"]];
-const short = (s, n) => (s && s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s || "");
+const ALL = [...FIGURES, ...PROFILE_FIGS];
+const ORDER = ["revenue", "rnd", "pat", "employees", "incorporated", "dividends", "buyback", "royalty", "export_share", "ev_share", "new_business_share"];
+// Short names for the tiles; the full name stays in the tooltip and the screen-reader label
+const SHORT = { revenue: "Revenue", rnd: "R&D spend", pat: "Profit after tax", employees: "Employees", incorporated: "Incorporated", dividends: "Dividends", buyback: "Buyback", royalty: "Royalty to a parent", export_share: "Exports, share of volume", ev_share: "EV share of sales", new_business_share: "New business share" };
+const TILES = ORDER.map((k) => ALL.find((f) => f.key === k)).filter(Boolean).map((f) => ({ ...f, short: SHORT[f.key] || f.label }));
+const num = (figs, k) => (figs?.[k] && figs[k].value !== "" && !isNaN(Number(figs[k].value)) ? Number(figs[k].value) : null);
+const inr = (v) => v.toLocaleString("en-IN", { maximumFractionDigits: v >= 100 ? 0 : 2 });
+const pct = (v) => `${v.toLocaleString("en-IN", { maximumFractionDigits: v >= 10 ? 1 : 2 })}%`;
+const firstSentence = (q) => {
+  const s = String(q || "").replace(/\s+/g, " ").trim();
+  const m = s.match(/^(.{40,}?[.;!?])\s/);
+  const out = m ? m[1] : s;
+  return out.length > 170 ? out.slice(0, 168).trimEnd() + "…" : out;
+};
 
-function Segmented({ options, value, onChange, label }) {
+function Highlights({ figs }) {
+  const rev = num(figs, "revenue"), rnd = num(figs, "rnd"), pat = num(figs, "pat"), emp = num(figs, "employees"), inc = num(figs, "incorporated");
+  const year = new Date().getFullYear();
+  const cells = [
+    { label: "Revenue", value: rev != null ? `₹${inr(rev)} cr` : null, sub: "Revenue from operations" },
+    { label: "R&D investment", value: rev && rnd != null ? pct((rnd / rev) * 100) : null, sub: rnd != null ? `₹${inr(rnd)} cr, as a share of revenue` : "Share of revenue" },
+    { label: "Net profit margin", value: rev && pat != null ? pct((pat / rev) * 100) : null, sub: pat != null ? `₹${inr(pat)} cr profit after tax` : "Profit after tax over revenue" },
+    { label: "Company size", value: emp != null ? inr(emp) : null, sub: "Permanent employees" },
+    { label: "In existence", value: inc ? `${year - inc} years` : null, sub: inc ? `Incorporated in ${inc}` : "Since incorporation" },
+  ];
   return (
-    <div className="vx-seg" role="radiogroup" aria-label={label}>
-      {options.map(([v, text]) => (
-        <button key={v} type="button" role="radio" aria-checked={value === v} className={value === v ? "on" : ""} onClick={() => onChange(v)}>{text}</button>
+    <dl className="vx-high">
+      {cells.map((c) => (
+        <div key={c.label}>
+          <dt>{c.label}</dt>
+          <dd className={c.value ? "" : "none"}>{c.value || "Not found"}</dd>
+          <dd className="sub">{c.sub}</dd>
+        </div>
       ))}
+    </dl>
+  );
+}
+
+function Tile({ f, st, setSt }) {
+  const [open, setOpen] = useState(false);
+  const reduce = useReducedMotion();
+  const ev = st.evidence[0];
+  const orig = st.original == null ? "" : String(st.original);
+  const edited = st.value !== orig;
+  const state = edited ? "edited" : ev ? "found" : "missing";
+  const stateText = { edited: "Edited by you", found: "Found in the documents", missing: "Not found" }[state];
+  return (
+    <div className={`vx-tile ${state} ${open ? "open" : ""}`}>
+      <div className="vx-tile-top">
+        <label htmlFor={`fig-${f.key}`} title={f.label}>{f.short}</label>
+        <span className="vx-dot" title={stateText}><span className="sr">{stateText}</span></span>
+        <button type="button" className="vx-i" aria-expanded={open} aria-label={`Where ${f.label.toLowerCase()} comes from`} onClick={() => setOpen(!open)}><Info size={14} strokeWidth={2} aria-hidden="true" /></button>
+      </div>
+      <div className="vx-input">
+        <input id={`fig-${f.key}`} inputMode="decimal" value={st.value} placeholder="Not found" onChange={(e) => setSt({ ...st, value: e.target.value.replace(/[^0-9.]/g, "") })} />
+        {f.unit && <span>{f.unit}</span>}
+      </div>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div className="vx-why" initial={reduce ? false : { height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: [0.2, 0.7, 0.2, 1] }}>
+            <div className="vx-why-in">
+              {ev ? <><b>{srcLabel(ev)}</b><p>“{firstSentence(ev.quote)}”</p></> : <p>Not found in the documents. Type it in if you know it, or leave it empty.</p>}
+              {edited && <button type="button" className="vx-undo" onClick={() => setSt({ ...st, value: orig })}><Undo2 size={13} aria-hidden="true" />{orig ? `Back to ${orig}` : "Clear"}</button>}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function Item({ item, kind, review, setReview }) {
-  const off = !!review.off[item.key];
-  const [more, setMore] = useState(false);
-  const ev = item.evidence;
-  const label = review.label[item.key] ?? item.label;
-  const style = review.style[item.key] ?? item.style;
-  const toggle = () => setReview((r) => ({ ...r, off: { ...r.off, [item.key]: !off } }));
-  return (
-    <li className={`vx-item ${off ? "off" : ""}`}>
-      <button type="button" role="switch" aria-checked={!off} aria-label={off ? "Use this evidence" : "Leave this evidence out"} className="vx-use" onClick={toggle}><i /></button>
-      <div className="vx-body">
-        {(item.head || kind !== "item") && (
-          <div className="vx-line">
-            {item.head && <b>{cap(item.head)}</b>}
-            {kind === "statement" && (
-              <>
-                <Segmented label="Classification" options={LABELS} value={label} onChange={(v) => setReview((r) => ({ ...r, label: { ...r.label, [item.key]: v } }))} />
-                {item.priority && <span className="vx-tag">Listed as a priority</span>}
-                {label !== item.label && <span className="vx-tag changed">Changed from {item.label}</span>}
-              </>
-            )}
-            {kind === "job" && (
-              <>
-                <Segmented label="Style of the job description" options={STYLES} value={style} onChange={(v) => setReview((r) => ({ ...r, style: { ...r.style, [item.key]: v } }))} />
-                {style !== item.style && <span className="vx-tag changed">Changed from {item.style}</span>}
-              </>
-            )}
-          </div>
-        )}
-        {(more ? ev : ev.slice(0, 1)).map((e, i) => (
-          <figure key={i} className="vx-quote">
-            <blockquote>“{e.quote}”</blockquote>
-            <figcaption>
-              {e.doc === "WEB" ? <a href={e.url} target="_blank" rel="noreferrer">{srcLabel(e)}</a> : <span>{srcLabel(e)}</span>}
-              {TYPE[e.type] && <span>{TYPE[e.type]}</span>}
-            </figcaption>
-          </figure>
-        ))}
-        {ev.length > 1 && <button type="button" className="vx-more" onClick={() => setMore(!more)}>{more ? "Show one source" : `${ev.length - 1} more source${ev.length > 2 ? "s" : ""}`}</button>}
-      </div>
-    </li>
-  );
+function countLabel(c) {
+  if (c.unit === "document") return `${c.n} document${c.n === 1 ? "" : "s"}`;
+  if (c.of) return `${c.n} of ${c.of} figure${c.of === 1 ? "" : "s"}`;
+  if (!c.n) return "None found";
+  return `${c.n} found`;
 }
 
-export default function ReviewScreen({ context, form, setForm, docs, run, figs, setFigs, review, setReview, onDiagnose, onReset }) {
+export default function ReviewScreen({ context, run, figs, setFigs, onDiagnose, onReset }) {
   useDarkPage();
   const reduce = useReducedMotion();
-  const groups = useMemo(() => reviewGroups(run.extraction), [run]);
+  const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState("F1");
-  const [showLeft, setShowLeft] = useState(false);
-
-  const counts = Object.fromEntries(BUCKETS.map((b) => {
-    const all = (groups[b.fw] || []).flatMap((g) => g.items);
-    return [b.fw, { all: all.length, use: all.filter((i) => !review.off[i.key]).length }];
-  }));
-  const allItems = BUCKETS.reduce((n, b) => n + counts[b.fw].all, 0);
-  const inUse = BUCKETS.reduce((n, b) => n + counts[b.fw].use, 0);
-  const editedFigs = FIGURES.filter((f) => figs[f.key].value !== (figs[f.key].original == null ? "" : String(figs[f.key].original))).length;
-  const changes = Object.values(review.off).filter(Boolean).length + Object.keys(review.label).length + Object.keys(review.style).length + editedFigs;
+  const counts = useMemo(() => evidenceCounts(run.extraction, figs), [run, figs]);
+  const totals = Object.fromEntries(LENSES.map((l) => [l.fw, l.groups.flatMap((g) => g.items).reduce((n, it) => n + (counts[it.id].unit === "document" ? 0 : counts[it.id].n), 0)]));
   const pages = (run.docsRead || []).reduce((n, d) => n + d.pages, 0);
-  const rejected = run.stats?.rejected || [];
-  const roleDocs = ["AR", "IP", "EC"].map((r) => docs.find((d) => d.role === r && d.status === "done")).filter(Boolean);
-  const b = BUCKET[tab];
+  const web = (run.webResults || []).length;
+  const verified = run.stats?.verified ?? 0;
+  const edits = TILES.filter((f) => figs[f.key] && figs[f.key].value !== (figs[f.key].original == null ? "" : String(figs[f.key].original))).length;
+  const lens = LENSES.find((l) => l.fw === tab);
 
   return (
     <main className="lx fx vx" style={{ "--ember-k": 0.35, "--ice-k": 0.4 }}>
@@ -99,109 +111,94 @@ export default function ReviewScreen({ context, form, setForm, docs, run, figs, 
         </FlowTop>
 
         <section className="vx-head">
-          <p className="lx-chip"><i aria-hidden="true" />{context.company}{context.scope !== "Whole company" ? ` · ${context.scope}` : ""}</p>
-          <h1>Review what we found.</h1>
-          <p className="vx-lede">The AI only gathered the evidence. Check it here: correct a figure, leave out anything that looks wrong, or change how a statement is classified. The scores are then worked out by fixed rules.</p>
-          <dl className="vx-stats">
-            <div><dt>Pages read</dt><dd>{pages}</dd></div>
-            <div><dt>Quotations verified</dt><dd>{run.stats?.verified ?? 0}</dd></div>
-            <div><dt>Not found on the page</dt><dd>{rejected.length}</dd></div>
-            <div><dt>Web results used</dt><dd>{(run.webResults || []).length}</dd></div>
-          </dl>
+          <div>
+            <p className="lx-chip"><i aria-hidden="true" />{context.company}{context.scope !== "Whole company" ? ` · ${context.scope}` : ""}</p>
+            <h1>Evidence extracted.</h1>
+            <p className="vx-lede">Each piece was checked word for word against the page it came from. Check the key figures below, then see how each framework will use the evidence.</p>
+          </div>
+          <div className="vx-count-big">
+            <strong>{verified}</strong>
+            <span>pieces of evidence</span>
+            <small>from {pages} pages{web ? ` and ${web} web results` : ""}</small>
+          </div>
         </section>
 
-        <div className="vx-top">
-          <section className="vx-card vx-inputs" aria-labelledby="vx-in">
-            <h2 id="vx-in">Your inputs</h2>
-            <dl>
-              <div><dt>Company</dt><dd>{context.company}</dd></div>
-              <div><dt>Part of the business</dt><dd>{context.scope}</dd></div>
-              <div><dt>Industry</dt><dd>Indian automobile manufacturers</dd></div>
-            </dl>
-            <ul className="vx-docs">
-              {roleDocs.map((d) => (
-                <li key={d.role}><span className="lx-tile" aria-hidden="true"><FileText size={16} strokeWidth={1.8} /></span><div><b>{DOC_LABEL[d.role]}</b><span>{d.file.name} · {d.pages.length} pages</span></div></li>
-              ))}
-              {(run.webResults || []).length > 0 && <li><span className="lx-tile" aria-hidden="true"><Globe size={16} strokeWidth={1.8} /></span><div><b>Web search</b><span>{run.webResults.length} results for missing and supporting inputs</span></div></li>}
-            </ul>
-            <div className="psw-slot"><ParentSwitch on={form.parentTech} onChange={(v) => setForm({ ...form, parentTech: v })} /></div>
-          </section>
-
-          <section className="vx-card vx-figs" aria-labelledby="vx-fig">
-            <div className="vx-card-head">
-              <h2 id="vx-fig">Key figures</h2>
-              <p>These drive the spending ratios. Correct any that are wrong and fill in any that are missing.</p>
-            </div>
-            <div className="vx-fig-grid">
-              {FIGURES.map((f) => {
-                const st = figs[f.key], ev = st.evidence[0];
-                const orig = st.original == null ? "" : String(st.original);
-                const edited = st.value !== orig;
-                const state = edited ? "edited" : ev ? "found" : "missing";
-                return (
-                  <div key={f.key} className={`vx-fig ${state}`}>
-                    <div className="vx-fig-top">
-                      <label htmlFor={`fig-${f.key}`}>{f.label}</label>
-                      <span className="vx-badge">{edited ? "Edited" : ev ? "Found" : "Missing"}</span>
-                    </div>
-                    <div className="vx-input">
-                      <input id={`fig-${f.key}`} inputMode="decimal" value={st.value} placeholder="Not found" onChange={(e) => setFigs({ ...figs, [f.key]: { ...st, value: e.target.value.replace(/[^0-9.]/g, "") } })} />
-                      <span>{f.unit}</span>
-                    </div>
-                    {ev && !edited && <p className="vx-src"><b>{srcLabel(ev)}</b> “{short(ev.quote, 110)}”</p>}
-                    {!ev && !edited && <p className="vx-src muted">Not in the documents. Enter it if you know it, or leave it empty.</p>}
-                    {edited && <button type="button" className="vx-undo" onClick={() => setFigs({ ...figs, [f.key]: { ...st, value: orig } })}><Undo2 size={13} aria-hidden="true" />{orig ? `Back to ${orig}` : "Clear"}</button>}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </div>
-
-        <section className="vx-card vx-evidence" aria-labelledby="vx-ev">
+        <section className="vx-card vx-figures" aria-labelledby="vx-fig">
           <div className="vx-card-head">
-            <h2 id="vx-ev">Evidence</h2>
-            <p>Switch off anything that does not belong. Left-out evidence is not used in any score.</p>
+            <h2 id="vx-fig">Key figures</h2>
+            <button type="button" className="lx-ghost" aria-expanded={expanded} aria-controls="vx-tiles" onClick={() => setExpanded(!expanded)}>
+              {expanded ? "Hide the figures" : `See and correct all ${TILES.length} figures`}
+              <ChevronDown size={14} aria-hidden="true" style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform .25s" }} />
+            </button>
           </div>
-          <div className="vx-tabs" role="tablist" aria-label="Frameworks">
-            {BUCKETS.map((x) => (
-              <button key={x.fw} type="button" role="tab" id={`tab-${x.fw}`} aria-selected={tab === x.fw} aria-controls="vx-panel" className={tab === x.fw ? "on" : ""} style={{ "--c": x.color }} onClick={() => setTab(x.fw)}>
-                <i aria-hidden="true" /><b>{x.name}</b><span>{counts[x.fw].use}{counts[x.fw].use !== counts[x.fw].all ? ` of ${counts[x.fw].all}` : ""}</span>
+          <Highlights figs={figs} />
+          <AnimatePresence initial={false}>
+            {expanded && (
+              <motion.div id="vx-tiles" className="vx-tiles-wrap" initial={reduce ? false : { height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.4, ease: [0.2, 0.7, 0.2, 1] }}>
+                <p className="vx-tiles-note">These drive the spending ratios in the diagnosis. Correct anything that looks wrong; the <Info size={12} aria-hidden="true" /> button shows where a figure was found.</p>
+                <div className="vx-tiles">
+                  {TILES.map((f) => figs[f.key] && <Tile key={f.key} f={f} st={figs[f.key]} setSt={(st) => setFigs({ ...figs, [f.key]: st })} />)}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+
+        <section className="vx-card vx-lenses" aria-labelledby="vx-ln">
+          <div className="vx-card-head">
+            <h2 id="vx-ln">How the diagnosis reads the evidence</h2>
+            <p>Four frameworks, in this order. Each looks for specific signals in the documents. The next page shows where the company falls.</p>
+          </div>
+          <div className="vx-chain" role="tablist" aria-label="Frameworks">
+            {LENSES.map((l, i) => (
+              <button key={l.fw} type="button" role="tab" id={`ln-${l.fw}`} aria-selected={tab === l.fw} aria-controls="vx-lens" className={tab === l.fw ? "on" : ""} style={{ "--c": l.color }} onClick={() => setTab(l.fw)}>
+                <span className="n">{i + 1}</span>
+                <b>{l.short}</b>
+                <small>{l.question}</small>
+                <em>{totals[l.fw]} found</em>
               </button>
             ))}
           </div>
           <AnimatePresence mode="wait" initial={false}>
-            <motion.div key={tab} id="vx-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="vx-panel" style={{ "--c": b.color }}
-              initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6, transition: { duration: 0.15 } }} transition={{ duration: 0.25 }}>
-              <p className="vx-panel-sub"><b>{b.sub}.</b> Framework: {b.framework}.</p>
-              {(groups[tab] || []).length === 0 && <p className="vx-none">No verified evidence was found for this framework. The diagnosis will mark it as having too little evidence.</p>}
-              {(groups[tab] || []).map((g) => (
-                <div key={g.title} className="vx-group">
-                  <h3>{g.title}<span>{g.items.filter((i) => !review.off[i.key]).length}</span></h3>
-                  <ul>{g.items.map((it) => <Item key={it.key} item={it} kind={g.kind} review={review} setReview={setReview} />)}</ul>
-                </div>
-              ))}
+            <motion.div key={tab} id="vx-lens" role="tabpanel" aria-labelledby={`ln-${tab}`} className="vx-lens" style={{ "--c": lens.color }}
+              initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8, transition: { duration: 0.15 } }} transition={{ duration: 0.3 }}>
+              <div className="vx-theory">
+                <h3>{lens.name}<span>{lens.basis}</span></h3>
+                <p>{lens.idea}</p>
+                <Diagram fw={tab} />
+              </div>
+              <div className="vx-signals">
+                <h3>What we look for in the documents</h3>
+                {lens.groups.map((g) => (
+                  <div key={g.title} className="vx-sig-group">
+                    <h4>{g.title}</h4>
+                    <ul>
+                      {g.items.map((it) => {
+                        const c = counts[it.id];
+                        return (
+                          <li key={it.id}>
+                            <div>
+                              <b>{it.name}</b>
+                              <span>{it.look}</span>
+                              <em><CornerDownRight size={12} aria-hidden="true" />{it.reads}</em>
+                            </div>
+                            <span className={`vx-n ${c.n ? "yes" : "no"}`}>{countLabel(c)}{c.note ? <small>{c.note}</small> : null}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+                <p className="vx-total">We found <b>{totals[tab]}</b> pieces of evidence for this framework.</p>
+              </div>
             </motion.div>
           </AnimatePresence>
-          {rejected.length > 0 && (
-            <div className="vx-left">
-              <button type="button" aria-expanded={showLeft} onClick={() => setShowLeft(!showLeft)}>
-                <ChevronDown size={15} aria-hidden="true" style={{ transform: showLeft ? "rotate(180deg)" : "none" }} />
-                {rejected.length} quotation{rejected.length === 1 ? " was" : "s were"} not found on the page cited and {rejected.length === 1 ? "is" : "are"} not used
-              </button>
-              {showLeft && (
-                <ul>
-                  {rejected.map((r, i) => <li key={i}><blockquote>“{short(r.quote, 220)}”</blockquote><span>{r.doc === "WEB" ? srcLabel(r) : `${DOC_LABEL[r.doc] || r.doc} · p.${r.page}`} · {r.reason}</span></li>)}
-                </ul>
-              )}
-            </div>
-          )}
         </section>
       </div>
 
       <div className="vx-bar" role="region" aria-label="Run the diagnosis">
         <div className="vx-bar-in">
-          <p><Building2 size={15} aria-hidden="true" /><span><b>{inUse}</b> of {allItems} <span className="vx-long">pieces of evidence </span>in use{changes ? ` · ${changes} change${changes === 1 ? "" : "s"}` : ""}<span className="vx-long">{changes ? " by you" : ""}</span></span></p>
+          <p><span><b>{verified}</b> pieces of evidence<span className="vx-long"> across four frameworks</span>{edits ? ` · ${edits} figure${edits === 1 ? "" : "s"} corrected` : ""}</span></p>
           <button type="button" className="lx-cta" onClick={onDiagnose}>Run the diagnosis<span aria-hidden="true"><ArrowRight size={18} /></span></button>
         </div>
       </div>
