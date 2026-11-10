@@ -11,8 +11,11 @@ import Landing from "@/components/landing/Landing";
 import ReadingScreen from "@/components/flow/ReadingScreen";
 import ReviewScreen from "@/components/flow/ReviewScreen";
 import { applyReview, emptyReview } from "@/lib/review";
+import { loadSession, sessionSet, clearAll } from "@/lib/store";
 
 const STAGES = ["Upload", "Read and extract", "Confirm figures", "Diagnosis"];
+const STEP = ["", "read", "review", "diagnosis"];
+const urlFor = (s) => (s ? `?step=${STEP[s]}` : window.location.pathname);
 
 export default function Home() {
   const [stage, setStage] = useState(0);
@@ -29,8 +32,90 @@ export default function Home() {
   const [review, setReview] = useState(emptyReview);
   const logRef = useRef([]);
   const feed = useRef({ events: [], finished: false, error: null });
+  const [hydrated, setHydrated] = useState(false);
+  const resumeRun = useRef(false), needSummary = useRef(false), fromPop = useRef(false), prevStage = useRef(0);
+  const live = useRef({});
+  live.current = { stage, run, figs, result, runStatus };
 
   useEffect(() => { fetch("/api/health").then((r) => r.json()).then(setHealth).catch(() => setHealth({})); }, []);
+
+  // Restore the saved analysis, if there is one from the last 24 hours.
+  useEffect(() => {
+    (async () => {
+      let pc = "";
+      try { pc = sessionStorage.getItem("aa-passcode") || ""; } catch {}
+      const saved = await loadSession();
+      const st = saved?.state;
+      if (saved?.docs?.length) setDocs(saved.docs.map((d) => ({ ...d, file: { name: d.name, size: d.size } })));
+      setForm((f) => ({ ...f, ...(st?.form || {}), passcode: pc }));
+      let s = 0;
+      if (st) {
+        if (st.run) setRun(st.run);
+        if (st.figs) setFigs(st.figs);
+        if (st.review) setReview(st.review);
+        if (st.result) setResult(st.result);
+        s = st.stage || 0;
+        if (s === 3 && !st.result) s = st.run && st.figs ? 2 : 0;
+        if (s === 2 && !(st.run && st.figs)) s = 0;
+        if (s === 1) { if (st.run && st.figs) s = 2; else { resumeRun.current = true; s = 0; } }
+        if (s === 3 && st.result.summary == null && !st.result.summaryError) needSummary.current = true;
+      }
+      setStage(s); prevStage.current = s;
+      window.history.replaceState({ stage: s }, "", urlFor(s));
+      setHydrated(true);
+    })();
+  }, []);
+
+  // A refresh during reading picks up where it stopped; finished steps come from the browser cache.
+  useEffect(() => { if (hydrated && resumeRun.current) { resumeRun.current = false; analyse(); } });
+
+  // Save as the user goes. Document text is saved separately because it is large and rarely changes.
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(() => sessionSet("state", { stage, form: { company: form.company, scope: form.scope, parentTech: form.parentTech }, run, figs, review, result }), 400);
+    return () => clearTimeout(t);
+  }, [hydrated, stage, form.company, form.scope, form.parentTech, run, figs, review, result]);
+  useEffect(() => {
+    if (!hydrated || docs.some((d) => d.status === "reading")) return;
+    const t = setTimeout(() => sessionSet("docs", docs.filter((d) => d.status === "done").map((d) => ({ id: d.id, name: d.file.name, size: d.file.size, role: d.role, manual: d.manual, scores: d.scores, status: "done", progress: 100, pages: d.pages }))), 700);
+    return () => clearTimeout(t);
+  }, [hydrated, docs]);
+  useEffect(() => { try { if (form.passcode) sessionStorage.setItem("aa-passcode", form.passcode); } catch {} }, [form.passcode]);
+
+  // Back and forward move between the steps instead of leaving the analysis.
+  useEffect(() => {
+    if (!hydrated) return;
+    const prev = prevStage.current; prevStage.current = stage;
+    if (fromPop.current) { fromPop.current = false; return; }
+    if (prev === stage) return;
+    const replace = prev === 1 && stage === 2;
+    window.history[replace ? "replaceState" : "pushState"]({ stage }, "", urlFor(stage));
+  }, [stage, hydrated]);
+  useEffect(() => {
+    const onPop = () => {
+      const want = Math.max(0, STEP.indexOf(new URLSearchParams(window.location.search).get("step") || ""));
+      const L = live.current;
+      let s = want;
+      if (s === 3 && !L.result) s = L.run ? 2 : 0;
+      if (s === 2 && !(L.run && L.figs)) s = 0;
+      if (s === 1 && L.runStatus !== "running") s = L.run && L.figs ? 2 : 0;
+      if (L.stage === 1 && s !== 1) { runId.current += 1; setRunStatus("idle"); }
+      if (s !== want) window.history.replaceState({ stage: s }, "", urlFor(s));
+      fromPop.current = true;
+      setStage(s);
+      window.scrollTo({ top: 0 });
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // If the page was refreshed before the written summary arrived, ask for it again.
+  useEffect(() => {
+    if (!hydrated || !needSummary.current || !result) return;
+    needSummary.current = false;
+    fetchNarrative(result, result.context, form.passcode).then((summary) => setResult((r) => ({ ...r, summary }))).catch((e) => setResult((r) => ({ ...r, summary: "", summaryError: e.message })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
 
   const log = {
     start(text) { const id = logRef.current.length; logRef.current = [...logRef.current, { id, text, state: "running" }]; setLogItems(logRef.current); return id; },
@@ -53,6 +138,7 @@ export default function Home() {
     for (const d of docs) if (d.role && d.status === "done") { files[d.role] = d.file; preread[d.role] = d.pages; }
     const id = ++runId.current;
     logRef.current = []; setLogItems([]); setRunStatus("running");
+    setRun(null); setFigs(null); setResult(null);
     const fd = { events: [], finished: false, error: null };
     feed.current = fd;
     setStage(1); window.scrollTo({ top: 0 });
@@ -102,10 +188,16 @@ export default function Home() {
     }
   }
 
+  // Starting again is the one deliberate way to drop the saved analysis.
   function reset() {
     setStage(0); setRun(null); setFigs(null); setResult(null); setLogItems([]); logRef.current = []; setError(""); setReview(emptyReview());
     setDocs([]); setRunStatus("idle"); runId.current += 1;
+    setForm((f) => ({ company: "", scope: "", parentTech: false, passcode: f.passcode }));
+    clearAll();
+    window.scrollTo({ top: 0 });
   }
+
+  function resume() { setStage(result ? 3 : 2); window.scrollTo({ top: 0 }); }
 
   if (stage === 1) {
     return (
@@ -123,7 +215,7 @@ export default function Home() {
 
   if (stage === 0) {
     return (
-      <Landing testMode={health?.mock}>
+      <Landing testMode={health?.mock} saved={hydrated && run && figs ? { company: run.company || form.company, at: result ? "the diagnosis" : "the review", onResume: resume, onReset: reset } : null}>
         <form className="upload lx-form" onSubmit={analyse}>
           <div className="lx-form-grid">
             <fieldset className="lx-box" disabled={stage === 1}>

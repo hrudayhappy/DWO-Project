@@ -9,7 +9,7 @@ import { REGIMES, zoneOf } from "./content";
 
 const clamp = (v) => Math.min(1, Math.max(0, v));
 
-export default function Landing({ children, testMode }) {
+export default function Landing({ children, testMode, saved }) {
   const [value, setValue] = useState(0.5);
   const regime = REGIMES[zoneOf(value)];
 
@@ -33,6 +33,17 @@ export default function Landing({ children, testMode }) {
           </nav>
           <span className="lx-course">IIM Lucknow · DWO</span>
         </header>
+
+        {saved && (
+          <div className="lx-resume" role="region" aria-label="Saved analysis">
+            <span className="lx-resume-dot" aria-hidden="true" />
+            <p><b>{saved.company}</b> is saved at {saved.at}. It stays here for 24 hours, or until you start again.</p>
+            <div>
+              <button type="button" className="lx-ghost" onClick={saved.onReset}>Start again</button>
+              <button type="button" className="lx-cta lx-cta-sm" onClick={saved.onResume}>Continue<span aria-hidden="true"><ArrowUpRight size={16} strokeWidth={2.2} /></span></button>
+            </div>
+          </div>
+        )}
 
         <section className="lx-hero" id="top">
           <div>

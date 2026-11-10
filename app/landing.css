@@ -47,6 +47,15 @@ html.lx-html, html.lx-html body { background: #050302; }
 .lx-pills a:last-child { background: #fff; color: var(--bg); font-weight: 500; }
 .lx-course { justify-self: end; white-space: nowrap; font-size: 13px; color: var(--muted); padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass); }
 
+/* saved analysis */
+.lx-resume { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 18px; padding: 8px 8px 8px 18px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.05); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); animation: lx-in .5s both; }
+.lx-resume-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #7fe0a0; box-shadow: 0 0 10px #7fe0a0; }
+.lx-resume p { flex: 1 1 260px; margin: 0; font-size: 14px; color: var(--muted); }
+.lx-resume p b { color: #fff; font-weight: 500; }
+.lx-resume div { display: flex; gap: 8px; }
+.lx .lx-cta-sm { margin: 0; padding: 5px 5px 5px 18px; gap: 10px; font-size: 14px; border: 0; cursor: pointer; font-family: inherit; }
+.lx .lx-cta-sm span { width: 32px; height: 32px; }
+
 /* chips */
 .lx-chip { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 6px 13px 6px 11px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.05); font-size: 13px; color: rgba(255,255,255,.86); backdrop-filter: blur(10px); }
 .lx-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-fill); box-shadow: 0 0 10px var(--accent); }
@@ -219,6 +228,7 @@ fieldset.lx-box:disabled { opacity: .55; }
   .lx-nav { grid-template-columns: 1fr auto; }
   .lx-pills { display: none; }
   .lx-course { font-size: 12px; padding: 5px 10px; }
+  .lx-resume { border-radius: 22px; padding: 12px 12px 12px 16px; }
   .lx-hero { margin-top: 36px; }
   .lx h1 { font-size: clamp(48px, 15vw, 72px); }
   .lx-verdict { font-size: 17px; }
