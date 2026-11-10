@@ -1,7 +1,7 @@
 import "@fontsource/ibm-plex-sans/400.css";
 import "@fontsource/ibm-plex-sans/500.css";
 import "@fontsource/ibm-plex-sans/600.css";
-import "@fontsource-variable/archivo/wdth.css";
+import "@fontsource-variable/google-sans-flex/opsz.css";
 import "./globals.css";
 import "./landing.css";
 

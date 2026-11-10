@@ -92,49 +92,47 @@ export default function Home() {
 
   if (stage <= 1) {
     return (
-      <Landing>
-        <form className="upload" onSubmit={analyse}>
-          <fieldset className="panel" disabled={stage === 1}>
-            <h2>The company</h2>
-            <label>Company name
-              <input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} placeholder="e.g. Bajaj Auto Limited" />
-            </label>
-            <label>Part of the business to analyse <em>optional</em>
-              <input value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} placeholder="e.g. Indian passenger-vehicle business only" />
-            </label>
-            <div className="psw-slot">
-              <ParentSwitch on={form.parentTech} onChange={(v) => setForm({ ...form, parentTech: v })} disabled={stage === 1} />
-            </div>
-          </fieldset>
-
-          <section className="panel">
-            <h2>Documents</h2>
-            <DocumentDrop docs={docs} setDocs={setDocs} disabled={stage === 1} />
-          </section>
-
-          <section className="panel">
-            <h2>Industry</h2>
-            <p>Indian automobile manufacturers. Industry-level indicators come from the {INDUSTRY_PROFILES[DEFAULT_INDUSTRY].source}.</p>
-            {health?.passcodeRequired && (
-              <label>Access code
-                <input type="password" value={form.passcode} disabled={stage === 1} onChange={(e) => setForm({ ...form, passcode: e.target.value })} placeholder="Provided by the project team" />
+      <Landing testMode={health?.mock}>
+        <form className="upload lx-form" onSubmit={analyse}>
+          <div className="lx-form-grid">
+            <fieldset className="lx-box" disabled={stage === 1}>
+              <h3>The company</h3>
+              <label>Company name
+                <input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} placeholder="e.g. Bajaj Auto Limited" />
               </label>
-            )}
-            {health && !health.mock && (!health.gemini || !health.tavily) && (
-              <p className="warn">The server is missing {[!health.gemini && "the Gemini key", !health.tavily && "the Tavily key"].filter(Boolean).join(" and ")}. Add it in the hosting settings before running an analysis.</p>
-            )}
-            {health?.mock && <p className="warn">Test mode: AI responses are simulated.</p>}
-          </section>
+              <label>Part of the business to analyse <em>optional</em>
+                <input value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} placeholder="e.g. Indian passenger-vehicle business only" />
+              </label>
+              <div className="psw-slot">
+                <ParentSwitch on={form.parentTech} onChange={(v) => setForm({ ...form, parentTech: v })} disabled={stage === 1} />
+              </div>
+            </fieldset>
+            <section className="lx-box">
+              <h3>Documents</h3>
+              <DocumentDrop docs={docs} setDocs={setDocs} disabled={stage === 1} />
+            </section>
+          </div>
+
+          <div className="lx-form-foot">
+            <div className="lx-industry">
+              <p><b>Industry</b> Indian automobile manufacturers. Industry-level indicators come from the {INDUSTRY_PROFILES[DEFAULT_INDUSTRY].source}.</p>
+              {health?.passcodeRequired && (
+                <label className="lx-code">Access code
+                  <input type="password" value={form.passcode} disabled={stage === 1} onChange={(e) => setForm({ ...form, passcode: e.target.value })} placeholder="From the project team" />
+                </label>
+              )}
+              {health && !health.mock && (!health.gemini || !health.tavily) && (
+                <p className="warn">The server is missing {[!health.gemini && "the Gemini key", !health.tavily && "the Tavily key"].filter(Boolean).join(" and ")}. Add it in the hosting settings before running an analysis.</p>
+              )}
+            </div>
+            <RunButton status={runStatus} step={stepLabel} detail={stepDetail} onRun={analyse} onCancel={cancelRun} disabled={docs.some((d) => d.status === "reading")} />
+          </div>
 
           {error && <p className="error" role="alert">{error}</p>}
-          <RunButton status={runStatus} step={stepLabel} detail={stepDetail} onRun={analyse} onCancel={cancelRun} disabled={docs.some((d) => d.status === "reading")} />
           {stage === 1 && logItems.length > 0 && (
-            <section className="panel ld-runlog">
-              <h2>Progress</h2>
-              <ul className="log compact runlog" aria-label="Progress">
-                {logItems.map((l) => <li key={l.id} className={l.state}>{l.text}</li>)}
-              </ul>
-            </section>
+            <ul className="log compact runlog lx-log" aria-label="Progress">
+              {logItems.map((l) => <li key={l.id} className={l.state}>{l.text}</li>)}
+            </ul>
           )}
         </form>
       </Landing>

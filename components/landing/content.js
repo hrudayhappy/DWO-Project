@@ -1,45 +1,47 @@
-// Words for the three regions of the balance line. Colours match THEMES in scenes.js.
+// Words for the three regions of the balance line. Each region answers the same three questions:
+// how the organisation is structured, how work moves through it, and where that leads.
 export const REGIMES = [
   {
     key: "explore",
     zone: "Failure trap",
-    name: "Exploration · organic design",
+    zoneNote: "All search, little payoff",
+    name: "Exploration",
     joiner: "or", mark: "?",
     verdict: ["Failure trap.", "Endless search, and little of it is ever put to use."],
-    colors: { field: "#6a1e2c", accent: "#ff8a76", ink: "#3a1218" },
-    scenes: [
-      ["E1", "Structure", "Organic design", "One flat level. Every department talks to every other and to the CEO directly, so information moves fast and in every direction."],
-      ["E2", "Focus", "R&D and growth", "Scientists in coats and goggles at the bench. Most money and attention go into new products, and growth follows."],
-      ["E3", "The catch", "High costs, high waste", "Most of the cost goes to R&D, and the line throws out a pile of rejects. Efficiency is low."],
+    cards: [
+      { code: "E1", kind: "Structure", title: "A flat network of teams", bullets: [["Cross-functional teams", 2.0], ["Talk sideways, not up", 3.4], ["Decisions where the knowledge is", 4.0]] },
+      { code: "E2", kind: "How work moves", title: "Many experiments, few winners", bullets: [["Try many things at once", 2.0], ["Most fail, and that's expected", 4.0], ["Returns are uncertain and late", 5.4]] },
+      { code: "E3", kind: "Where it leads", title: "The search never ends", bullets: [["Ideas dropped before they mature", 2.6], ["Costs keep rising", 5.4], ["Nothing reaches scale", 6.4]] },
     ],
   },
   {
     key: "ambi",
     zone: "Ambidextrous",
-    name: "Ambidextrous · both, on purpose",
+    zoneNote: "Both, in separate units",
+    name: "Ambidextrous",
     joiner: "and", mark: ".",
-    verdict: ["Ambidextrous.", "A steady core and a free-roaming frontier, joined at the top."],
-    colors: { field: "#0f4d3e", accent: "#6ff0bf", ink: "#123a30" },
-    scenes: [
-      ["A1", "Structure", "One company, two designs", "The company stands in the middle. On its left an organic unit decides quickly in a flat circle; on its right a mechanistic unit runs five levels deep."],
-      ["A2", "Focus", "One budget, two engines", "R&D and manufacturing run in parallel, and the budget flows equally to both."],
+    verdict: ["Ambidextrous.", "Both at full strength, in separate units, held together at the top."],
+    cards: [
+      { code: "A1", kind: "Structure", title: "Two units, one top team", bullets: [["Senior team holds both together", 2.0], ["Organic unit explores", 2.4], ["Mechanistic unit runs the core", 2.8]] },
+      { code: "A2", kind: "How work moves", title: "Each side works its own way", bullets: [["Different rules for different work", 2.2], ["Top team sets the split", 3.0], ["New unit protected from the core", 3.6]] },
+      { code: "A3", kind: "Where it leads", title: "Ideas graduate to the core", bullets: [["Today's profits fund tomorrow's bets", 2.8], ["Proven ideas move to the core", 6.6], ["Ready when the market moves", 7.4]] },
     ],
   },
   {
     key: "exploit",
     zone: "Success trap",
-    name: "Exploitation · mechanistic design",
+    zoneNote: "All efficiency, no renewal",
+    name: "Exploitation",
     joiner: "or", mark: "?",
-    verdict: ["Success trap.", "Refining what already works while the market moves on."],
-    colors: { field: "#14306b", accent: "#8fd0ff", ink: "#101e40" },
-    scenes: [
-      ["X1", "Structure", "Mechanistic design", "The tower rises beside its five-level hierarchy. Reports climb slowly, level by level, and instructions come back down."],
-      ["X2", "Focus", "Efficiency", "Identical units at a steady rhythm. Costs are low and almost nothing is wasted."],
-      ["X3", "The catch", "Ideas parked halfway", "Cost savings climb quickly to the top. The R&D idea stalls halfway and is parked for the future."],
+    verdict: ["Success trap.", "Better and better at yesterday's business while the market moves on."],
+    cards: [
+      { code: "X1", kind: "Structure", title: "Tall hierarchy, separate silos", bullets: [["Many levels, narrow spans", 1.8], ["Decisions made at the top", 2.2], ["To reach another team: up and back down", 3.2]] },
+      { code: "X2", kind: "How work moves", title: "One route, one rulebook", bullets: [["Narrow, specialised roles", 1.8], ["Written rules and procedures", 2.4], ["Same route, same time, low cost per task", 3.4]] },
+      { code: "X3", kind: "Where it leads", title: "Better at yesterday's business", bullets: [["Quick, certain returns win", 2.6], ["New ideas stall in the layers", 4.8], ["The market moves on", 6.4]] },
     ],
   },
 ];
 
 // The ambidextrous band runs from 40% to 60% of the line.
 export const zoneOf = (v) => (v < 0.4 ? 0 : v <= 0.6 ? 1 : 2);
-export const ZONE_CENTRES = [0.18, 0.5, 0.82];
+export const ZONE_CENTRES = [0.17, 0.5, 0.83];
